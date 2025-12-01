@@ -16,7 +16,9 @@ export const signToken = (payload: TokenPayload) => {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "2h" });
 };
 
-export const requireAuth = (req: Request, res: Response, next: NextFunction) => {
+export type AuthedRequest = Request & { userContext?: TokenPayload };
+
+export const requireAuth = (req: AuthedRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Unauthorized" });

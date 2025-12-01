@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { query } from "../config/db";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, AuthedRequest } from "../middleware/auth";
 
 const router = Router();
 
@@ -10,7 +10,7 @@ const isManager = (role: string) => role === "manager";
 router.use(requireAuth);
 
 // List actions scoped by tenant/site and role
-router.get("/", async (req, res) => {
+router.get("/", async (req: AuthedRequest, res) => {
   const ctx = req.userContext!;
   try {
     const rows = await query(
@@ -37,7 +37,7 @@ router.get("/", async (req, res) => {
 });
 
 // Get action by id with scoping
-router.get("/:id", async (req, res) => {
+router.get("/:id", async (req: AuthedRequest, res) => {
   const ctx = req.userContext!;
   const { id } = req.params;
   try {
@@ -67,7 +67,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // Create action
-router.post("/", async (req, res) => {
+router.post("/", async (req: AuthedRequest, res) => {
   const ctx = req.userContext!;
   const { title, description, priority, due_date, assigned_to } = req.body || {};
 
@@ -116,7 +116,7 @@ router.post("/", async (req, res) => {
 });
 
 // Update status or assignment
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", async (req: AuthedRequest, res) => {
   const ctx = req.userContext!;
   const { id } = req.params;
   const { status, assigned_to, priority, title, description, due_date } = req.body || {};
