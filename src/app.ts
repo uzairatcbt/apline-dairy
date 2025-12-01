@@ -1,4 +1,4 @@
-import express from "express";
+import express, { NextFunction, Request, Response } from "express";
 import cors from "cors";
 import { registerRoutes } from "./routes";
 
@@ -18,7 +18,7 @@ export const createApp = () => {
 
   registerRoutes(app);
 
-  app.use((err: unknown, _req, res, _next) => {
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error("Unhandled error", err);
     res.status(500).json({ error: "Internal server error" });
   });

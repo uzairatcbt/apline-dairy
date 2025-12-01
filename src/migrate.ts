@@ -17,7 +17,7 @@ const ensureMigrationsTable = async () => {
 
 const getAppliedMigrations = async (): Promise<Set<string>> => {
   const res = await pool.query<{ name: string }>(`SELECT name FROM ${MIGRATIONS_TABLE}`);
-  return new Set(res.rows.map((r) => r.name));
+  return new Set(res.rows.map((r: { name: string }) => r.name));
 };
 
 const applyMigration = async (name: string, sql: string) => {
@@ -30,10 +30,10 @@ const applyMigration = async (name: string, sql: string) => {
       [name]
     );
     await client.query("COMMIT");
-    console.log(`✅ Applied ${name}`);
+    console.log(`Applied ${name}`);
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error(`❌ Failed ${name}:`, err);
+    console.error(`Failed ${name}:`, err);
     throw err;
   } finally {
     client.release();

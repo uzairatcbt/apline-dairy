@@ -12,8 +12,9 @@ Node/Express API with PostgreSQL and simple migration runner.
 1) `cd apline-dairy`
 2) Install deps: `npm install`
 3) Copy env template: `cp .env.example .env` (or create manually) and set Postgres values.
-4) Run migrations + seeds: `npm run migrate`
-5) Start dev server (auto-reload): `npm run dev` -> http://localhost:4000
+4) (Optional) Start Postgres via Docker: `docker compose up -d`
+5) Run migrations + seeds: `npm run migrate`
+6) Start dev server (auto-reload): `npm run dev` -> http://localhost:4000
 
 ## Env vars (`.env`)
 - `PORT` (default 4000)
