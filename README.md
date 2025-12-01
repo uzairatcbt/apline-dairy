@@ -29,26 +29,34 @@ Node/Express API with PostgreSQL and simple migration runner.
 Files in `src/migrations/` are applied alphabetically and tracked in table `schema_migrations`.
 - `0001_init.sql` – tables: users, teams, user_teams, tasks + triggers for updated_at
 - `0002_seed_data.sql` – sample teams/users/tasks (password hashes are placeholders)
+- `0003_multitenant.sql` – tenants, sites, mt_users, actions (multi-tenant seed)
 
 Add new migrations by creating a new `YYYYMMDDHHMM_description.sql` file in `migrations/`, then run `npm run migrate`.
 
-## API (initial)
-- `GET /health` – service status
-- `GET /health/db` – DB connectivity check
-- `GET /api/users` – list users
-- `POST /api/users` – create user `{ email, fullName, role?, passwordHash }`
-- `GET /api/tasks` – list tasks (with assigned/teams)
-- `POST /api/tasks` – create task `{ title, description?, status?, dueDate?, assignedTo?, teamId? }`
+## API (current)
+- `GET /test` – service status
+- `GET /test/db` – DB connectivity check
+- `POST /api/auth/login` – returns JWT (seed users below)
+- `GET /api/actions` – list actions scoped to tenant + site (manager sees all in site; operator sees own/assigned)
+- `GET /api/actions/:id` – scoped fetch
+- `POST /api/actions` – create action (operator can only assign to self)
+- `PATCH /api/actions/:id` – update status/assignment/details within scope
 
 ## Structure
 - `src/app.ts` – Express app factory and middleware
 - `src/server.ts` – bootstraps the server
 - `src/config/env.ts` – env loader
 - `src/config/db.ts` – Postgres pool + query helper
+- `src/middleware/auth.ts` – JWT auth + context
 - `src/routes` – route registrations and handlers
 - `src/migrate.ts` – migration runner
 - `src/migrations/` – SQL files applied in order
 
+## Seed users (password: `password`)
+- john@gippsland.com (operator, tenant NeoRosetta, site Gippsland)
+- sarah@gippsland.com (manager, tenant NeoRosetta, site Gippsland)
+- ahmed@adelaide.com (manager, tenant NeoRosetta, site Adelaide)
+
 ## Notes
-- Replace `password_hash` with a real hashed value (bcrypt/argon2) before using in production.
-- Extend routes/controllers as you map the frontend screens to API endpoints.
+- Replace `password_hash` with real hashed secrets for production.
+- All action queries are scoped to tenant + site to enforce isolation.

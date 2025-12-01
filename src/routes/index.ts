@@ -1,10 +1,10 @@
 import { Express } from "express";
 import testRouter from "./test";
-import usersRouter from "./users";
-import tasksRouter from "./tasks";
+import authRouter from "./auth";
+import actionsRouter from "./actions";
 
 export const registerRoutes = (app: Express) => {
   app.use("/test", testRouter);
-  app.use("/api/users", usersRouter);
-  app.use("/api/tasks", tasksRouter);
+  app.use("/api/auth", authRouter);
+  app.use("/api/actions", actionsRouter);
 };
