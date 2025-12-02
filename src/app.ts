@@ -5,8 +5,21 @@ import { registerRoutes } from "./routes";
 export const createApp = () => {
   const app = express();
 
-  app.use(cors());
+  const allowedOrigin = process.env.FRONTEND_ORIGIN;
+  app.use(cors(allowedOrigin ? { origin: allowedOrigin } : undefined));
   app.use(express.json());
+
+  // Simple request logger for debugging
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on("finish", () => {
+      const duration = Date.now() - start;
+      console.log(
+        `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`
+      );
+    });
+    next();
+  });
 
   app.get("/", (_req, res) => {
     res.json({

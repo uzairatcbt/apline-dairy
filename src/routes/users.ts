@@ -1,61 +1,28 @@
 import { Router } from "express";
 import { query } from "../config/db";
+import { requireAuth, AuthedRequest } from "../middleware/auth";
 
 const router = Router();
 
-router.get("/", async (_req, res) => {
+router.use(requireAuth);
+
+// List users scoped to tenant/site
+router.get("/", async (req: AuthedRequest, res) => {
+  const ctx = req.userContext!;
   try {
     const result = await query(
       `
-        SELECT
-          u.id,
-          u.email,
-          u.full_name,
-          u.role,
-          u.created_at,
-          u.updated_at,
-          ARRAY(
-            SELECT t.name
-            FROM teams t
-            JOIN user_teams ut ON ut.team_id = t.id
-            WHERE ut.user_id = u.id
-          ) AS teams
-        FROM users u
-        ORDER BY u.created_at DESC
-      `
-    );
-    res.json(result.rows);
-  } catch (err) {
-    console.error("Failed to fetch users", err);
-    res.status(500).json({ error: "Failed to fetch users" });
-  }
-});
-
-router.post("/", async (req, res) => {
-  const { email, fullName, role, passwordHash } = req.body || {};
-  if (!email || !fullName || !passwordHash) {
-    return res.status(400).json({ error: "email, fullName, and passwordHash are required" });
-  }
-
-  try {
-    const result = await query(
-      `
-        INSERT INTO users (email, full_name, role, password_hash)
-        VALUES ($1, $2, COALESCE($3, 'user'), $4)
-        ON CONFLICT (email) DO NOTHING
-        RETURNING *
+        SELECT user_id, full_name, email, role, site_id
+        FROM mt_users
+        WHERE tenant_id = $1 AND site_id = $2
+        ORDER BY full_name
       `,
-      [email, fullName, role ?? null, passwordHash]
+      [ctx.tenantId, ctx.siteId]
     );
-
-    if (result.rows.length === 0) {
-      return res.status(409).json({ error: "User already exists" });
-    }
-
-    res.status(201).json(result.rows[0]);
+    return res.json(result.rows);
   } catch (err) {
-    console.error("Failed to create user", err);
-    res.status(500).json({ error: "Failed to create user" });
+    console.error("List users failed", err);
+    return res.status(500).json({ error: "Failed to fetch users" });
   }
 });
 
