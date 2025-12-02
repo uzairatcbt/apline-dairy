@@ -14,20 +14,31 @@ router.post("/login", async (req, res) => {
   try {
     const result = await query(
       `
-        SELECT user_id, tenant_id, site_id, email, full_name, role, password_hash
-        FROM mt_users
-        WHERE email = $1
+        SELECT 
+          u.user_id,
+          u.tenant_id,
+          u.site_id,
+          u.email,
+          u.full_name,
+          u.role,
+          u.password_hash,
+          s.site_name
+        FROM mt_users u
+        JOIN sites s ON s.site_id = u.site_id
+        WHERE u.email = $1
         LIMIT 1
       `,
       [email]
     );
 
     if (result.rows.length === 0) {
+      console.log("[auth] login failed: user not found", email);
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
     const user = result.rows[0];
     const ok = await bcrypt.compare(password, user.password_hash);
+    console.log("[auth] login attempt", { email, ok });
     if (!ok) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
@@ -45,11 +56,12 @@ router.post("/login", async (req, res) => {
       token,
       user: {
         id: user.user_id,
+        name: user.full_name,
         email: user.email,
-        fullName: user.full_name,
         role: user.role,
         tenantId: user.tenant_id,
-        siteId: user.site_id
+        siteId: user.site_id,
+        siteName: user.site_name
       }
     });
   } catch (err) {
