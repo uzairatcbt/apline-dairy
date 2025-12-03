@@ -5,13 +5,95 @@ import { requireAuth, AuthedRequest } from "../middleware/auth";
 const router = Router();
 
 // Helpers
+const getScope = (req: AuthedRequest) => {
+  const ctx = req.userContext;
+  if (!ctx) throw new Error("Missing auth context");
+  return ctx;
+};
+const notFound = (res: any, message = "Not found") => res.status(404).json({ error: message });
+const forbidden = (res: any, message = "Forbidden") => res.status(403).json({ error: message });
+const badRequest = (res: any, message: string) => res.status(400).json({ error: message });
+const serverError = (res: any, label: string, err: unknown) => {
+  console.error(label, err);
+  return res.status(500).json({ error: "Internal server error" });
+};
+
 const isManager = (role: string) => role === "manager";
+const ALLOWED_STATUS = ["open", "in_progress", "completed"] as const;
+const ALLOWED_PRIORITIES = ["low", "medium", "high", "critical"] as const;
+
+type ValidationResult = { ok: true } | { ok: false; message: string };
+
+const validateCreateBody = (body: any): ValidationResult => {
+  const { title, description, priority, due_date, assigned_to } = body ?? {};
+
+  if (!title || typeof title !== "string" || title.trim().length < 3) {
+    return { ok: false, message: "title is required (min 3 chars)" };
+  }
+
+  if (description && typeof description !== "string") {
+    return { ok: false, message: "description must be a string" };
+  }
+
+  if (priority && !ALLOWED_PRIORITIES.includes(priority)) {
+    return { ok: false, message: `priority must be one of ${ALLOWED_PRIORITIES.join(", ")}` };
+  }
+
+  if (assigned_to && typeof assigned_to !== "string") {
+    return { ok: false, message: "assigned_to must be a string user id" };
+  }
+
+  if (due_date) {
+    const date = new Date(due_date);
+    if (isNaN(date.getTime())) {
+      return { ok: false, message: "due_date must be a valid date" };
+    }
+  }
+
+  return { ok: true };
+};
+
+const validateUpdateBody = (body: any): ValidationResult => {
+  const { status, priority, title, description, due_date, assigned_to } = body ?? {};
+
+  if (status && !ALLOWED_STATUS.includes(status)) {
+    return { ok: false, message: `status must be one of ${ALLOWED_STATUS.join(", ")}` };
+  }
+
+  if (priority && !ALLOWED_PRIORITIES.includes(priority)) {
+    return { ok: false, message: `priority must be one of ${ALLOWED_PRIORITIES.join(", ")}` };
+  }
+
+  if (title && (typeof title !== "string" || title.trim().length < 3)) {
+    return { ok: false, message: "title must be at least 3 characters" };
+  }
+
+  if (description && typeof description !== "string") {
+    return { ok: false, message: "description must be a string" };
+  }
+
+  if (assigned_to && typeof assigned_to !== "string") {
+    return { ok: false, message: "assigned_to must be a string user id" };
+  }
+
+  if (due_date) {
+    const date = new Date(due_date);
+    if (isNaN(date.getTime())) {
+      return { ok: false, message: "due_date must be a valid date" };
+    }
+  }
+
+  return { ok: true };
+};
 
 router.use(requireAuth);
 
 // List actions scoped by tenant/site and role
 router.get("/", async (req: AuthedRequest, res) => {
-  const ctx = req.userContext!;
+  const ctx = getScope(req);
+  const limit = Math.min(Number(req.query.limit) || 50, 100);
+  const offset = Number(req.query.offset) || 0;
+
   try {
     const rows = await query(
       `
@@ -26,19 +108,19 @@ router.get("/", async (req: AuthedRequest, res) => {
             a.assigned_to = $4
           )
         ORDER BY a.created_at DESC
+        LIMIT $5 OFFSET $6
       `,
-      [ctx.tenantId, ctx.siteId, ctx.role, ctx.userId]
+      [ctx.tenantId, ctx.siteId, ctx.role, ctx.userId, limit, offset]
     );
-    res.json(rows.rows);
+    return res.json(rows.rows);
   } catch (err) {
-    console.error("List actions failed", err);
-    res.status(500).json({ error: "Failed to fetch actions" });
+    return serverError(res, "List actions failed", err);
   }
 });
 
 // Get action by id with scoping
 router.get("/:id", async (req: AuthedRequest, res) => {
-  const ctx = req.userContext!;
+  const ctx = getScope(req);
   const { id } = req.params;
   try {
     const result = await query(
@@ -58,24 +140,24 @@ router.get("/:id", async (req: AuthedRequest, res) => {
       `,
       [id, ctx.tenantId, ctx.siteId, ctx.role, ctx.userId]
     );
-    if (result.rows.length === 0) return res.status(404).json({ error: "Not found" });
-    res.json(result.rows[0]);
+    if (result.rows.length === 0) return notFound(res);
+    return res.json(result.rows[0]);
   } catch (err) {
-    console.error("Get action failed", err);
-    res.status(500).json({ error: "Failed to fetch action" });
+    return serverError(res, "Get action failed", err);
   }
 });
 
 // Create action
 router.post("/", async (req: AuthedRequest, res) => {
-  const ctx = req.userContext!;
+  const ctx = getScope(req);
   const { title, description, priority, due_date, assigned_to } = req.body || {};
 
-  if (!title) return res.status(400).json({ error: "title is required" });
+  const validation = validateCreateBody(req.body);
+  if (!validation.ok) return badRequest(res, validation.message);
 
   // Operators can only assign to themselves or leave unassigned
   if (ctx.role === "operator" && assigned_to && assigned_to !== ctx.userId) {
-    return res.status(403).json({ error: "Operators cannot assign to others" });
+    return forbidden(res, "Operators cannot assign to others");
   }
 
   try {
@@ -86,7 +168,7 @@ router.post("/", async (req: AuthedRequest, res) => {
         [assigned_to, ctx.tenantId, ctx.siteId]
       );
       if (check.rowCount === 0) {
-        return res.status(400).json({ error: "Assignee must be in the same site/tenant" });
+        return badRequest(res, "Assignee must be in the same site/tenant");
       }
     }
 
@@ -95,7 +177,7 @@ router.post("/", async (req: AuthedRequest, res) => {
         INSERT INTO actions (
           tenant_id, site_id, title, description, status, priority, due_date, created_by, assigned_to
         ) VALUES ($1,$2,$3,$4,'open', COALESCE($5,'medium'), $6, $7, $8)
-        RETURNING *
+        RETURNING action_id
       `,
       [
         ctx.tenantId,
@@ -108,18 +190,31 @@ router.post("/", async (req: AuthedRequest, res) => {
         assigned_to ?? null
       ]
     );
-    res.status(201).json(result.rows[0]);
+    const createdId = result.rows[0].action_id;
+    const created = await query(
+      `
+        SELECT a.*, u.full_name AS assigned_to_name
+        FROM actions a
+        LEFT JOIN mt_users u ON u.user_id = a.assigned_to
+        WHERE a.action_id = $1 AND a.tenant_id = $2 AND a.site_id = $3
+      `,
+      [createdId, ctx.tenantId, ctx.siteId]
+    );
+
+    return res.status(201).json(created.rows[0]);
   } catch (err) {
-    console.error("Create action failed", err);
-    res.status(500).json({ error: "Failed to create action" });
+    return serverError(res, "Create action failed", err);
   }
 });
 
 // Update status or assignment
 router.patch("/:id", async (req: AuthedRequest, res) => {
-  const ctx = req.userContext!;
+  const ctx = getScope(req);
   const { id } = req.params;
   const { status, assigned_to, priority, title, description, due_date } = req.body || {};
+
+  const validation = validateUpdateBody(req.body);
+  if (!validation.ok) return badRequest(res, validation.message);
 
   try {
     // Fetch action to check scope and ownership
@@ -127,12 +222,16 @@ router.patch("/:id", async (req: AuthedRequest, res) => {
       `SELECT * FROM actions WHERE action_id = $1 AND tenant_id = $2 AND site_id = $3`,
       [id, ctx.tenantId, ctx.siteId]
     );
-    if (existing.rowCount === 0) return res.status(404).json({ error: "Not found" });
+    if (existing.rowCount === 0) return notFound(res);
     const action = existing.rows[0];
 
     const isOwner = action.created_by === ctx.userId || action.assigned_to === ctx.userId;
     if (!isManager(ctx.role) && !isOwner) {
-      return res.status(403).json({ error: "Forbidden" });
+      return forbidden(res);
+    }
+
+    if (ctx.role === "operator" && assigned_to && assigned_to !== ctx.userId) {
+      return forbidden(res, "Operators cannot assign to others");
     }
 
     // If assigning, ensure same tenant + site
@@ -142,7 +241,7 @@ router.patch("/:id", async (req: AuthedRequest, res) => {
         [assigned_to, ctx.tenantId, ctx.siteId]
       );
       if (check.rowCount === 0) {
-        return res.status(400).json({ error: "Assignee must be in the same site/tenant" });
+        return badRequest(res, "Assignee must be in the same site/tenant");
       }
     }
 
@@ -159,7 +258,7 @@ router.patch("/:id", async (req: AuthedRequest, res) => {
         WHERE action_id = $7
           AND tenant_id = $8
           AND site_id = $9
-        RETURNING *
+        RETURNING action_id
       `,
       [
         status ?? null,
@@ -173,10 +272,19 @@ router.patch("/:id", async (req: AuthedRequest, res) => {
         ctx.siteId
       ]
     );
-    res.json(result.rows[0]);
+    const updatedId = result.rows[0].action_id;
+    const updated = await query(
+      `
+        SELECT a.*, u.full_name AS assigned_to_name
+        FROM actions a
+        LEFT JOIN mt_users u ON u.user_id = a.assigned_to
+        WHERE a.action_id = $1 AND a.tenant_id = $2 AND a.site_id = $3
+      `,
+      [updatedId, ctx.tenantId, ctx.siteId]
+    );
+    return res.json(updated.rows[0]);
   } catch (err) {
-    console.error("Update action failed", err);
-    res.status(500).json({ error: "Failed to update action" });
+    return serverError(res, "Update action failed", err);
   }
 });
 
