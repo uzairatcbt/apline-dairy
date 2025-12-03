@@ -8,21 +8,21 @@ Node/Express API with PostgreSQL and simple migration runner.
 - TypeScript + ts-node
 - File-based SQL migrations (custom runner)
 
-## Setup
-1) `cd apline-dairy`
-2) Install deps: `npm install`
-3) Copy env template: `cp .env.example .env` (or create manually) and set values:
-   - `JWT_SECRET` (required)
-   - `FRONTEND_ORIGIN` (for CORS allowlist, e.g. `http://localhost:5173`)
-   - `PG*` connection settings
-   - `PORT` (default 4000)
-4) (Optional) Start Postgres via Docker: `docker compose up -d`
-5) Run migrations + seeds: `npm run migrate`
-6) Start dev server (auto-reload): `npm run dev` -> http://localhost:4000
+## Setup (local)
+1. `cd apline-dairy`
+2. Install deps: `npm install`
+3. Copy env template: `cp .env.example .env` and set:
+   - `JWT_SECRET` (required; any strong string)
+   - `FRONTEND_ORIGIN` (frontend dev URL, e.g. `http://localhost:8080`)
+   - `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`
+   - `PORT` (optional, default 4000)
+4. (Optional) Start Postgres via Docker: `docker compose up -d`
+5. Run migrations + seeds: `npm run migrate`
+6. Start dev server: `npm run dev` → http://localhost:4000
 
 ## Env vars (`.env`)
 - `PORT` (default 4000)
-- `JWT_SECRET` (**required**)
+- `JWT_SECRET` (required)
 - `FRONTEND_ORIGIN` (CORS allowlist; leave empty to allow all in dev)
 - `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`
 
@@ -48,6 +48,7 @@ Add new migrations by creating a new `YYYYMMDDHHMM_description.sql` file in `mig
 - `GET /api/actions/:id` – scoped fetch
 - `POST /api/actions` – create action (operator can only assign to self)
 - `PATCH /api/actions/:id` – update status/assignment/details within scope
+- `GET /api/users` – site-scoped assignee list
 
 ## Structure
 - `src/app.ts` – Express app factory and middleware
@@ -59,7 +60,9 @@ Add new migrations by creating a new `YYYYMMDDHHMM_description.sql` file in `mig
 - `src/migrate.ts` – migration runner
 - `src/migrations/` – SQL files applied in order
 
-Note: legacy tables in `0001/0002` are unused for the MSP test; multi-tenant tables/seeds are in `0003_multitenant.sql`.
+Notes:
+- Legacy migrations `0001/0002` are unused; multi-tenant schema/seeds are in `0003`+, including persona seeds with password `password`.
+- Request logging is enabled by default; health check at `/health`.
 
 ## Seed users (password: `password`)
 - john@gippsland.com (operator, tenant NeoRosetta, site Gippsland)
